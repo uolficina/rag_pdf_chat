@@ -71,7 +71,7 @@ def main():
     print("Modelo CrossEncoder Carregado")
 
 # FUNÇÃO DE RERANK COM  INDICE E CROSS ENCODER
-    def buscar(pergunta, k_base=30, k_final=5):  # busca no FAISS e reranqueia, retornando top k_final
+    def buscar(pergunta, k_base=30, k_final=3):  # busca no FAISS e reranqueia, retornando top k_final
         q_emb = embed_model.encode([pergunta], convert_to_numpy=True, normalize_embeddings=True).astype("float32")  # embedding da pergunta
         scores, idxs = index.search(q_emb, k_base)  # traz k_base candidatos aproximados
 
@@ -98,9 +98,12 @@ def main():
             print(r["text"][:500])  # mostra parte do texto do chunk
 
         # chama o LLM com os chunks selecionados para responder à pergunta
-        resposta = mistral(pergunta, resultados)  # envia pergunta + contexto ao Mistral
+        resposta, uso = mistral(pergunta, resultados)  # envia pergunta + contexto ao Mistral
         print("\nResposta (Mistral):\n")  # separador visual
         print(resposta)  # mostra a resposta gerada
+        print(
+            f"\nTokens - entrada: {uso.prompt_tokens}, saída: {uso.completion_tokens}, total: {uso.total_tokens}"
+        )
 ### BLOCO MISTRAL CHAMA MODELO E  DEFINE PROMPT ALIMENTADO COM A SAIDA DAS FUNÇÕES ANTERIORES
 mistral_model = "mistral-small-latest"
 
@@ -128,7 +131,8 @@ def mistral(pergunta, contextos):
         messages=[{"role": "user", "content": prompt_text}],  # mensagem do usuário
         temperature=0.2,  # baixa temperatura para respostas mais fiéis ao contexto
     )
-    return resp.choices[0].message.content  # devolve texto da resposta
+    usage = resp.usage
+    return resp.choices[0].message.content, usage  # devolve texto da resposta
 
 if __name__ == "__main__":  # executa main se rodar diretamente
     main()  # chama fluxo principal
