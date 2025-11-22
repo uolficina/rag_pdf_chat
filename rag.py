@@ -5,6 +5,8 @@ import numpy as np  # operações numéricas
 import faiss  # índice vetorial
 from mistralai import Mistral  # cliente Mistral
 
+
+### CARREGADOR DE PDF
 def load_pdf(file_path):
     reader = PdfReader(file_path)  # abre o PDF
     texts = []  # guarda o texto de cada página
@@ -18,6 +20,7 @@ def load_pdf(file_path):
     full_text = "\n".join(texts)  # concatena páginas com quebras de linha
     return full_text, offsets  # devolve texto completo e offsets por página
 
+###SEPARADOR DE PAGINAS
 def find_page(start_idx, page_offsets):
     page = 0  # índice da página (0-based)
     for i, off in enumerate(page_offsets):  # percorre offsets
@@ -26,6 +29,7 @@ def find_page(start_idx, page_offsets):
         page = i  # atualiza página corrente
     return page  # retorna índice da página encontrada
 
+###DIVISOR DE TRECHOS
 def split_text(text, page_offsets, chunk_size=1000, overlap=200):
     if chunk_size <= overlap:  # valida limites de chunk/overlap
         raise ValueError("documento menor que o chunk minimo")  # erro se inválido
@@ -38,6 +42,7 @@ def split_text(text, page_offsets, chunk_size=1000, overlap=200):
         chunks.append({"page": page, "text": chunk_text})  # guarda página e texto
     return chunks  # devolve todos os chunks
 
+##CHAMADA  PRINCIPAL
 def main():
     file_path = input("Digite o caminho do pdf: ").strip().strip('"')  # lê caminho do PDF
     if not file_path:  # nenhum caminho fornecido
@@ -46,23 +51,26 @@ def main():
     if not os.path.isfile(file_path):  # verifica se o arquivo existe
         print(f"Arquivo não encontrado: {file_path}")  # avisa ausência
         return  # encerra
-
+### CARREGA OS TRECHOS REFERENCIANDO PAGINAS
     pdf_text, offsets = load_pdf(file_path)  # carrega texto completo e offsets
     print("Trechos carregados")  # confirma carregamento
     #print(pdf_text[:1000])  # mostra os primeiros 1000 caracteres
-
+### CARREGA MODELO DE EMBENDINGS TRANSFORMERS PARA BUSCAR TRECHOS EM RAG
     chunks = split_text(pdf_text, offsets, chunk_size=1000, overlap=200)  # fatia texto em chunks
     chunk_texts = [c["text"] for c in chunks]  # extrai somente o texto de cada chunk para embeddar
     embed_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")  # carrega modelo de embeddings
     embs = embed_model.encode(chunk_texts, convert_to_numpy=True, normalize_embeddings=True).astype("float32")  # gera vetores normalizados
     print("Modelo SentenceTransformer carregado")
+### CRIA INDICE FAISS
     d = embs.shape[1]  # dimensão dos vetores
     index = faiss.IndexFlatIP(d)  # índice FAISS de produto interno (para cosseno com vetores normalizados)
     index.add(embs)  # adiciona todos os vetores ao índice
     print("Índice FAISS criado")
+### CARREGAD CROSSENCODER MARCO PARA RANKEAR O QUE O MODELO CAPTOU COM O INDICE
     cross = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")  # reranker mais preciso (cross-encoder)
     print("Modelo CrossEncoder Carregado")
 
+# FUNÇÃO DE RERANK COM  INDICE E CROSS ENCODER
     def buscar(pergunta, k_base=30, k_final=5):  # busca no FAISS e reranqueia, retornando top k_final
         q_emb = embed_model.encode([pergunta], convert_to_numpy=True, normalize_embeddings=True).astype("float32")  # embedding da pergunta
         scores, idxs = index.search(q_emb, k_base)  # traz k_base candidatos aproximados
@@ -93,7 +101,7 @@ def main():
         resposta = mistral(pergunta, resultados)  # envia pergunta + contexto ao Mistral
         print("\nResposta (Mistral):\n")  # separador visual
         print(resposta)  # mostra a resposta gerada
-
+### BLOCO MISTRAL CHAMA MODELO E  DEFINE PROMPT ALIMENTADO COM A SAIDA DAS FUNÇÕES ANTERIORES
 mistral_model = "mistral-small-latest"
 
 def prompt(pergunta, contextos):
