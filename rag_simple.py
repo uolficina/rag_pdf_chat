@@ -55,9 +55,9 @@ def main():
     pdf_text, offsets = load_pdf(file_path)  # carrega texto completo e offsets
     print("Trechos carregados")  # confirma carregamento
     #print(pdf_text[:1000])  # mostra os primeiros 1000 caracteres
-### CARREGA MODELO DE EMBENDINGS TRANSFORMERS PARA BUSCAR TRECHOS EM RAG
     chunks = split_text(pdf_text, offsets, chunk_size=1000, overlap=200)  # fatia texto em chunks
     chunk_texts = [c["text"] for c in chunks]  # extrai somente o texto de cada chunk para embeddar
+### CARREGA MODELO DE EMBENDINGS TRANSFORMERS PARA BUSCAR TRECHOS EM RAG
     embed_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")  # carrega modelo de embeddings
     embs = embed_model.encode(chunk_texts, convert_to_numpy=True, normalize_embeddings=True).astype("float32")  # gera vetores normalizados
     print("Modelo SentenceTransformer carregado")
