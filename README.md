@@ -1,4 +1,4 @@
-# RAG em PDF com Mistral
+# SIMPLES RAG-PDF CHAT
 
 Script em Python que realiza busca de trechos em PDFs, reranqueia resultados e gera respostas usando o modelo de chat da Mistral. Foi pensado para rodar localmente via terminal, recebendo o caminho de um PDF e permitindo perguntas iterativas sobre o documento.
 
