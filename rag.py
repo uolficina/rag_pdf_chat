@@ -15,7 +15,11 @@ modelo_crossencoder = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 mistral_api = os.getenv("MISTRAL_API_KEY")
 total_paginas = 0  # será preenchido ao carregar o PDF
 paginas_texto = []  # texto bruto de cada página
-
+embed_model = None
+index = None
+cross = None
+chunks = []
+chunk_texts = []
 #funções
 def carregar_pdf(file_path):
     reader = PdfReader(file_path) #abre o pdf
@@ -209,36 +213,55 @@ def escolher_pagina():
         return
     exibir_pagina(chunks, pagina_humana=num)   
 
-def chat():
-    file_path = input("Digite o caminho do pdf: ").strip().strip('"') #lê o caminho do pdf
-    if not file_path: #se nenhum caminho fornecido
-        print("Nenhum arquivo informado") #avisa a falta de entrada
-        return #encerra
-    if not os.path.isfile(file_path): #verifica se existe o arquivo informado
-        print(f"Arquivo não encontrado: {file_path}") #avisa que o arquivo não foi encontrado
-        return #encerra
-    global embed_model, index, cross, chunks, chunk_texts
-    embed_model, index, cross, chunks, chunk_texts = rag(file_path)
-    while True:
-        pergunta= input("Digite sua pergunta ao documento (opções: gerar indice / ler pagina / trocar pdf / sair'): ").strip().lower() #le a pergunta do usuario
-        if pergunta == "sair": #condição  de saida
-            break #encerra 
-        if pergunta == "gerar indice":
-            gerar_indice(chunks)
-            continue
-        if pergunta == "ler pagina":
-            escolher_pagina()
-            continue
-        if pergunta == "trocar pdf":
-            return chat()
-        resultados = busca_rerank(pergunta) #obtem retorno da função busca rerank com os melhores trechos
-        #for r in resultados:  # percorre chunks selecionados
-        #        print(f"\nScore: {r['score']:.4f} | Página: {r['page']}")  # mostra score e página
-        #        print(r["text"][:500])  # mostra parte do texto do chunk
-        resposta, uso = mistral(pergunta,resultados) #envia pergunta  e contexto  para mistral
-        print("\nRESPOSTA (Mistral):\n")  # separador visual
-        print(resposta)  # mostra a resposta gerada
-        print(f"\nTokens - entrada: {uso.prompt_tokens}, saída: {uso.completion_tokens}, total: {uso.total_tokens}")
 
+def chat():
+    while True:
+        print("\n===Menu de Funções ===")
+        print("1) Carregar PDF")
+        print("2) Conversar com o PDF")
+        print("3) Gerar Índice Semântico")
+        print("4) Mostrar página específica")
+        print("5) Sair")
+
+        opção = input("Escolha um número do menu: ").strip()
+
+        if opção == "1":
+            file_path = input("Digite o caminho do PDF ou digite 'voltar': ").strip().strip('"')
+            if file_path == "voltar":
+                return chat()
+            if not file_path:
+                print("Nenhum arquivo informado.")
+                return
+            if not os.path.isfile(file_path):
+                print(f"Arquivo não encontrado: {file_path}")
+                return
+            global embed_model,index, cross, chunks, chunk_texts
+            embed_model,index,cross,chunks, chunk_texts = rag(file_path)
+        elif opção == "2":
+            if not chunks:
+                print("Carregue um pdf primeiro")
+                return chat()
+            while True:
+                pergunta= input("Digite sua pergunta ou 'voltar':  ").strip().lower()
+                if pergunta == "voltar":
+                    return chat()
+                resultados  = busca_rerank(pergunta)
+                resposta, uso = mistral(pergunta,resultados)
+                print("\nRESPOSTA (Mistral):\n")
+                print(resposta)
+                print(f"\nTokens - entrada: {uso.prompt_tokens}, saída: {uso.completion_tokens}, total: {uso.total_tokens}")
+        elif opção == "3":
+            if not chunks:
+                print("Carregue um pdf primeiro")
+                continue
+            gerar_indice(chunks)
+        elif opção == "4":
+            if not chunks:
+                print("Carregue um pdf primeiro")
+                continue
+            escolher_pagina()
+        elif opção == "5":
+            break
+        
 if __name__ == "__main__":  # executa main se rodar diretamente
     chat()  # chama fluxo principal        
