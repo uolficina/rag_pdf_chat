@@ -1,6 +1,6 @@
 # Terminal PDF RAG
 
-Python CLI that reads a local PDF, splits it into chunks, indexes with FAISS, re-ranks with a CrossEncoder, and answers via Mistral chat. It runs in a loop: pick a PDF, ask questions, generate a quick semantic index, read specific pages, or switch files without restarting.
+Python CLI that reads a local PDF, splits it into chunks, indexes with FAISS, re-ranks with a CrossEncoder, and answers via Mistral chat. It runs in a loop: pick a PDF, ask questions, generate a quick semantic index, read specific pages, or switch files without restarting. FAISS indexes are cached by file hash inside `index/`, so you can reopen previously processed PDFs without recomputing embeddings.
 
 ## Requirements
 - Python 3.10+
@@ -30,7 +30,8 @@ python rag.py
 2) **Chat with the PDF**: ask questions about the loaded document; type `back` to return to the menu. Shows token counts for each answer.  
 3) **Generate Semantic Index**: creates short titles per page using Mistral (API usage).  
 4) **Show specific page**: enter a page number to view the full extracted text; falls back to chunked view if needed.  
-5) **Exit**: quit the CLI.
+5) **Choose a loaded file from list**: pick a cached FAISS index stored in `index/` (skips re-embedding).  
+6) **Exit**: quit the CLI.
 
 Example:
 ```bash
@@ -39,6 +40,11 @@ python rag.py
 # Choose 1) Load PDF -> /path/to/document.pdf
 # Choose 2) Chat with the PDF -> "What are the main conclusions?"
 ```
+
+## Saved indexes
+- On the first load of a PDF, its embeddings/metadata are cached in `index/<sha>.faiss` and `index/<sha>.meta.json`; a `manifest.json` tracks the list.
+- Option 5 in the menu lists cached files by name and docid prefix so you can reopen them instantly.
+- Moving/renaming the PDF is fine; the cache key is the file content hash. Delete files in `index/` to force a rebuild.
 
 ## How it works
 - Chunking: `split_chunks` makes 2,000-character windows with 400 overlap and records the source page.
