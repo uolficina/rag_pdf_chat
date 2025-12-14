@@ -1,4 +1,4 @@
-import os
+import os, json, hashlib
 from pypdf import PdfReader
 from sentence_transformers import SentenceTransformer, CrossEncoder
 import numpy as np
@@ -11,7 +11,6 @@ import time
 mistral_model = "mistral-small-latest"
 embedding_model_name = "intfloat/multilingual-e5-base"
 crossencoder_model = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-# API
 mistral_api_key = os.getenv("MISTRAL_API_KEY")
 total_pages = 0  # filled when loading the PDF
 page_texts = []  # raw text for each page
@@ -21,6 +20,8 @@ cross = None
 chunks = []
 chunk_texts = []
 
+BASE_DIR = "index"
+os.makedirs(BASE_DIR, exist_ok=True)
 
 def load_pdf(file_path):
     reader = PdfReader(file_path)  # opens the pdf
@@ -59,27 +60,8 @@ def split_chunks(text, page_offsets, chunk_size=2000, overlap=400):
     print("PDF WITH MARKED CHUNKS")
 
 
-def rag(file_path):
-    global total_pages, page_texts
-    pdf_text, offsets, page_texts = load_pdf(file_path)  # load full text
-    total_pages = len(offsets)
-    chunks = split_chunks(pdf_text, offsets, chunk_size=2000, overlap=400)
-    chunk_texts = [c["text"] for c in chunks]
-    embed_model = SentenceTransformer(embedding_model_name)
-    print("EMBEDDING MODEL LOADED")
-    embed_texts = [f"passage: {txt}" for txt in chunk_texts]
-    embs = embed_model.encode(embed_texts, convert_to_numpy=True, normalize_embeddings=True).astype("float32")
-    d = embs.shape[1]  # vector dimension for faiss
-    index = faiss.IndexFlatIP(d)  # create faiss index
-    index.add(embs)  # add all vectors to faiss index
-    print("FAISS INDEX CREATED")
-    cross = CrossEncoder(crossencoder_model)
-    print("CROSS-ENCODER LOADED")
-    return embed_model, index, cross, chunks, chunk_texts
-
-
 def search_rerank(question, k_base=30, k_final=3):  # search faiss and rerank top 3 among top 30
-    global embed_model, index, cross, chunks, chunk_texts
+    global embed_model, index, cross, chunks, chunk_texts, encode
     results = []
     question_fmt = f"query: {question}"  # expected by e5 for queries
     q_emb = embed_model.encode([question_fmt], convert_to_numpy=True, normalize_embeddings=True).astype("float32")  # question embedding
@@ -175,16 +157,10 @@ def generate_index(chunks):
 def format_text(text, width=80):
     lines = []
     for paragraph in text.splitlines():
-        for line in textwrap.wrap(paragraph, width):
-            if len(line) < width - len(line):
-               deficit = width - len(line)
-               gaps = line.count("")
-               parts = line.split("")
-               base, remainder = divmod(deficit, gaps)
-               for i in range(remainder):
-                   parts[i] += " "
-               line = (" " * base).join(parts)
-            lines.append(line)
+        if not paragraph.strip():
+            lines.append("")
+            continue
+        lines.extend(textwrap.wrap(paragraph, width))
     return "\n".join(lines)
 
 
@@ -225,6 +201,108 @@ def choose_page():
         return
     show_page(chunks, human_page=num)   
 
+##permanent faiss index
+def doc_id(file_path):
+    with open(file_path, "rb") as f:
+        return hashlib.sha1(f.read()).hexdigest()
+
+def rag(file_path):
+    global embed_model, index, cross, chunks, chunk_texts, total_pages, page_text
+    docid = doc_id(file_path)
+    idx_path, meta_path, _ = doc_path(docid)
+
+    if os.path.exists(idx_path) and os.path.exists(meta_path):
+        embed_model = SentenceTransformer(embedding_model_name)
+        index, meta = load_index(docid)
+        chunk_texts = meta["chunk_texts"]
+        chunks = meta["chunks"]
+        page_text = meta["page_text"]
+        total_pages = meta["total_pages"]
+        cross = CrossEncoder(crossencoder_model)
+        return embed_model, index, cross, chunks, chunk_texts
+
+    pdf_text, offsets, page_texts = load_pdf(file_path)  # load full text
+    total_pages = len(offsets)
+    page_text = page_texts
+    chunks = split_chunks(pdf_text, offsets, chunk_size=2000, overlap=400)
+    chunk_texts = [c["text"] for c in chunks]
+    embed_model = SentenceTransformer(embedding_model_name)
+    print("EMBEDDING MODEL LOADED")
+    embed_texts = [f"passage: {txt}" for txt in chunk_texts]
+    embs = embed_model.encode(embed_texts, convert_to_numpy=True, normalize_embeddings=True).astype("float32")
+    d = embs.shape[1]  # vector dimension for faiss
+    index = faiss.IndexFlatIP(d)  # create faiss index
+    index.add(embs)  # add all vectors to faiss index
+    print("FAISS INDEX CREATED")
+    cross = CrossEncoder(crossencoder_model)
+    print("CROSS-ENCODER LOADED")
+
+    meta = {
+        "chunk_texts": chunk_texts,
+        "chunks": chunks,
+        "page_text": page_text,
+        "total_pages": total_pages,
+    }
+    save_index(docid, index, meta)
+    save_manifest(docid, file_path)
+    return embed_model, index, cross, chunks, chunk_texts
+
+def doc_path(docid):
+    idx_path = os.path.join(BASE_DIR, f"{docid}.faiss")
+    meta_path = os.path.join(BASE_DIR, f"{docid}.meta.json")
+    manifest_path = os.path.join(BASE_DIR, "manifest.json")
+    return idx_path, meta_path, manifest_path
+
+def save_index(docid, index, meta):
+    idx_path, meta_path, _ = doc_path(docid)
+    faiss.write_index(index, idx_path)
+    with open(meta_path, "w") as f:
+        json.dump(meta, f)
+
+def load_index(docid):
+    idx_path, meta_path, _ = doc_path(docid)
+    if not (os.path.exists(idx_path) and os.path.exists(meta_path)):
+        raise FileNotFoundError("Index not found")
+    index = faiss.read_index(idx_path)
+    with open(meta_path) as f:
+        meta = json.load(f)
+    return index, meta
+
+def save_manifest(docid, file_path, title=None):
+    _, _, manifest_path = doc_path(docid)
+    entry = {
+        "docid": docid,
+        "name": os.path.basename(file_path),
+        "size": os.path.getsize(file_path),
+        "mtime": os.path.getmtime(file_path),
+        "title": title,
+    }
+    manifest = []
+    if os.path.exists(manifest_path):
+        with open(manifest_path) as f:
+            manifest = json.load(f)
+        manifest = [m for m in manifest if m["docid"] != docid]
+    manifest.append(entry)
+    with open(manifest_path, "w") as f:
+        json.dump(manifest, f)
+
+def list_docs():
+    _, _, manifest_path = doc_path("dummy")
+    if not os.path.exists(manifest_path):
+        return []
+    with open(manifest_path) as f:
+        return json.load(f)
+
+def load_doc(docid):
+    index, meta = load_index(docid)
+    globals()["embed_model"] = SentenceTransformer(embedding_model_name)
+    globals()["cross"] = CrossEncoder(crossencoder_model)
+    globals()["index"] = index
+    globals()["chunk_texts"] = meta["chunk_texts"]
+    globals()["chunks"] = meta["chunks"]
+    globals()["page_text"] = meta["page_text"]
+    globals()["total_pages"] = meta["total_pages"]
+    return meta
 
 def chat_menu():
     while True:
@@ -233,7 +311,8 @@ def chat_menu():
         print("2) Chat with the PDF")
         print("3) Generate Semantic Index")
         print("4) Show specific page")
-        print("5) Exit")
+        print("5) Choose a loaded file from list")
+        print("6) Exit")
 
         option = input("Choose a menu number: ").strip()
 
@@ -273,7 +352,31 @@ def chat_menu():
                 continue
             choose_page()
         elif option == "5":
+            docs = list_docs()
+            if not docs:
+                print("Theres no index saved yer")
+                continue
+            print("\n=== Index File List ===")
+            for i, d in enumerate(docs, start=1):
+                print(f"{i}) {d['name']} [{d['docid'][:8]}] pages: {d.get('total_pages', '?')}")
+            
+            choice = input("Choose a number or 'back' for the previous menu: ").strip()
+            if choice == "back":
+                continue
+            try: 
+                idx = int(choice) - 1
+                if idx < 0 or idx >= len(docs):
+                    raise ValueError
+            except ValueError:
+                print("Invalid Choice")
+                continue
+
+            selected = docs[idx]
+            load_doc(selected["docid"])
+            cross = CrossEncoder(crossencoder_model)
+            print(f"Loaded: {selected['name']}")            
+        elif option == "6":
             break
-        
+
 if __name__ == "__main__":  # run main when executed directly
     chat_menu()  # start main flow
