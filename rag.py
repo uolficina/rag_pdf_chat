@@ -61,7 +61,7 @@ def split_chunks(text, page_offsets, chunk_size=2000, overlap=400):
 
 
 def search_rerank(question, k_base=30, k_final=3):  # search faiss and rerank top 3 among top 30
-    global embed_model, index, cross, chunks, chunk_texts, encode
+    global embed_model, index, cross, chunks, chunk_texts
     results = []
     question_fmt = f"query: {question}"  # expected by e5 for queries
     q_emb = embed_model.encode([question_fmt], convert_to_numpy=True, normalize_embeddings=True).astype("float32")  # question embedding
@@ -212,10 +212,9 @@ def rag(file_path):
     idx_path, meta_path, _ = doc_path(docid)
 
     if os.path.exists(idx_path) and os.path.exists(meta_path):
-        embed_model = SentenceTransformer(embedding_model_name)
         index, meta = load_index(docid)
         chunk_texts = meta["chunk_texts"]
-        chunks = meta["chunks"]
+        chunk = meta["chunks"]
         page_text = meta["page_text"]
         total_pages = meta["total_pages"]
         cross = CrossEncoder(crossencoder_model)
@@ -223,7 +222,6 @@ def rag(file_path):
 
     pdf_text, offsets, page_texts = load_pdf(file_path)  # load full text
     total_pages = len(offsets)
-    page_text = page_texts
     chunks = split_chunks(pdf_text, offsets, chunk_size=2000, overlap=400)
     chunk_texts = [c["text"] for c in chunks]
     embed_model = SentenceTransformer(embedding_model_name)
@@ -295,8 +293,6 @@ def list_docs():
 
 def load_doc(docid):
     index, meta = load_index(docid)
-    globals()["embed_model"] = SentenceTransformer(embedding_model_name)
-    globals()["cross"] = CrossEncoder(crossencoder_model)
     globals()["index"] = index
     globals()["chunk_texts"] = meta["chunk_texts"]
     globals()["chunks"] = meta["chunks"]
