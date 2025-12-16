@@ -1,0 +1,11 @@
+docling==2.65.0
+rapidocr
+onnxruntime
+sentence-transformers
+torch
+faiss-cpu
+mistralai
+numpy
+pillow
+pytesseract
+pdf2image

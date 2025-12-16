@@ -1,20 +1,30 @@
-from pypdf import PdfReader
+from pdf2image import convert_from_path
+import pytesseract
 import textwrap
 
+def load_pdf(file_path: str):
+    
+    images = convert_from_path(
+        file_path,
+        dpi=300,
+        grayscale=True,   # 🔥 melhora PDFs educacionais
+    )
 
-def load_pdf(file_path):
-    reader = PdfReader(file_path)
     texts = []
     offsets = []
     cursor = 0
-    for page in reader.pages:
-        page_text = page.extract_text() or ""
+
+    for page_number, img in enumerate(images, start=1):
+        page_text = pytesseract.image_to_string(img, lang="por")
+        page_text = page_text.strip()
+
         offsets.append(cursor)
         texts.append(page_text)
+
         cursor += len(page_text) + 1
+
     full_text = "\n".join(texts)
     return full_text, offsets, texts
-
 
 def find_page(start_idx, page_offsets):
     page = 0
@@ -88,4 +98,3 @@ def choose_page(state):
         print(f"The document has only {state['total_pages']} pages.")
         return
     show_page(state, human_page=num)
-

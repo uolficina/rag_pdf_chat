@@ -5,14 +5,15 @@ Python CLI to chat with local PDFs. It extracts text, creates overlapped chunks,
 ## Requirements
 - Python 3.10+
 - Environment variable `MISTRAL_API_KEY` with your Mistral key
-- Dependencies: `pypdf`, `sentence_transformers`, `faiss-cpu`, `mistralai`, `numpy`
+- Dependencies: see `requirements.txt` (Docling for PDF/OCR, RapidOCR + ONNXRuntime, Torch/Sentence-Transformers, FAISS, Mistral client)
+- First run needs internet to download Docling/RapidOCR/transformer models. If offline, pre-download and place them in the caches (`~/.cache/docling`, `~/.cache/rapidocr` or `.venv/lib/python*/site-packages/rapidocr/inference_engine/models`, Hugging Face cache).
 
 ## Quick setup
 ```bash
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install --upgrade pip
-pip install pypdf sentence_transformers faiss-cpu mistralai numpy
+pip install -r requirements.txt
 ```
 
 Set the key:
@@ -50,7 +51,7 @@ python main.py
 ## Architecture overview
 - **Config**: `rag/config.py` centralizes models and the shared `state` dict.
 - **Models**: `rag/embeddings.py` lazily loads `intfloat/multilingual-e5-base` and the CrossEncoder `cross-encoder/ms-marco-MiniLM-L-6-v2`.
-- **Pipeline**: `rag/retrieval.py` reads the PDF (`pypdf`), builds chunks (2,000 chars, 400 overlap), creates normalized embeddings, and indexes with FAISS (Inner Product). It searches top-30, reranks top-3 with the CrossEncoder, builds a prompt, and calls `mistral-small-latest`.
+- **Pipeline**: `rag/retrieval.py` reads the PDF via Docling (with OCR for image-only PDFs), builds chunks (2,000 chars, 400 overlap), creates normalized embeddings, and indexes with FAISS (Inner Product). It searches top-30, reranks top-3 with the CrossEncoder, builds a prompt, and calls `mistral-small-latest`.
 - **Direct reading**: `rag/pdf_utils.py` shows full page text when available.
 
 ## Quick tweaks
@@ -61,5 +62,5 @@ python main.py
 
 ## Troubleshooting
 - **Missing `MISTRAL_API_KEY`**: the app raises an error asking for the variable; set it and retry.
-- **PDF has no extractable text**: image-only PDFs need prior OCR.
+- **PDF has no extractable text**: Docling runs OCR (RapidOCR + ONNXRuntime). Ensure OCR models exist in the cache (`~/.cache/rapidocr` or `.venv/lib/python*/site-packages/rapidocr/inference_engine/models`) or allow network once to download.
 - **High memory/time**: reduce `chunk_size`, limit pages, or use smaller PDFs.
