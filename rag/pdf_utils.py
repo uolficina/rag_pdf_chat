@@ -1,28 +1,32 @@
+from PyPDF2 import PdfReader
 from pdf2image import convert_from_path
 import pytesseract
 import textwrap
+import re
 
-def load_pdf(file_path: str):
+def normalize_pdf_text(text: str) -> str:
+    text = text.replace("\r", "\n")
+    text = re.sub(r"[ \t]+\n", "\n", text)          
+    text = re.sub(r"(?<=\w)-\n(?=\w)", "", text)    
+    text = re.sub(r"\n{3,}", "\n\n", text)          
+    text = re.sub(r"(?<!\n)\n(?!\n)", " ", text)    
+    text = re.sub(r"[ \t]{2,}", " ", text)          
+    return text.strip()
     
-    images = convert_from_path(
-        file_path,
-        dpi=300,
-        grayscale=True,   # 🔥 melhora PDFs educacionais
-    )
-
-    texts = []
-    offsets = []
-    cursor = 0
-
-    for page_number, img in enumerate(images, start=1):
-        page_text = pytesseract.image_to_string(img, lang="por")
-        page_text = page_text.strip()
-
+def load_pdf(file_path: str):
+    reader =  PdfReader(file_path)
+    texts, offsets, cursor = [], [], 0
+    for i, page in enumerate(reader.pages):
+        page_text = page.extract_text() or ""
+        page_text = normalize_pdf_text(page_text)
+        print("Found Text on file")
+        if not page_text.strip():
+            print("Text not found...converting...")
+            image = convert_from_path(file_path, first_page=i+1, last_page=i+1)[0]
+            page_text = pytesseract.image_to_string(image)
         offsets.append(cursor)
-        texts.append(page_text)
-
+        texts.append(page_text) 
         cursor += len(page_text) + 1
-
     full_text = "\n".join(texts)
     return full_text, offsets, texts
 
@@ -49,13 +53,13 @@ def split_chunks(text, page_offsets, chunk_size=2000, overlap=400):
 
 
 def format_text(text, width=80):
-    lines = []
+    paras = re.split(r"\n\s*\n", text.strip())
     for paragraph in text.splitlines():
         if not paragraph.strip():
-            lines.append("")
+            paras.append("")
             continue
-        lines.extend(textwrap.wrap(paragraph, width))
-    return "\n".join(lines)
+        paras.extend(textwrap.wrap(paragraph, width))
+    return "\n\n".join(textwrap.fill(p, width=width) for p in paras)
 
 
 def show_page(state, human_page, trim=None):
