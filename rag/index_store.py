@@ -71,5 +71,6 @@ def load_doc(docid):
     state["chunks"] = meta["chunks"]
     # Backward compatibility: older metas used "page_text" instead of "page_texts".
     state["page_texts"] = meta.get("page_texts") or meta.get("page_text") or []
+    state["raw_page_texts"] = meta.get("raw_page_texts") or []
     state["total_pages"] = meta["total_pages"]
     return meta

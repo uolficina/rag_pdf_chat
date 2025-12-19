@@ -126,14 +126,16 @@ def prepare_document(file_path):
         state["index"] = index
         state["chunk_texts"] = meta["chunk_texts"]
         state["chunks"] = meta["chunks"]
-        state["page_texts"] = meta["page_texts"]
+        state["page_texts"] = meta.get("page_texts") or meta.get("page_text") or []
+        state["raw_page_texts"] = meta.get("raw_page_texts") or []
         state["total_pages"] = meta["total_pages"]
         get_models()
         return state
 
-    pdf_text, offsets, page_texts = load_pdf(file_path)
+    pdf_text, offsets, page_texts, raw_page_texts = load_pdf(file_path)
     state["total_pages"] = len(offsets)
     state["page_texts"] = page_texts
+    state["raw_page_texts"] = raw_page_texts
     chunks = split_chunks(pdf_text, offsets, chunk_size=2000, overlap=400)
     state["chunks"] = chunks
     state["chunk_texts"] = [c["text"] for c in chunks]
@@ -150,9 +152,9 @@ def prepare_document(file_path):
         "chunk_texts": state["chunk_texts"],
         "chunks": chunks,
         "page_texts": page_texts,
+        "raw_page_texts": raw_page_texts,
         "total_pages": state["total_pages"],
     }
     save_index(docid, index, meta)
     save_manifest(docid, file_path, total_pages=state["total_pages"])
     return state
-

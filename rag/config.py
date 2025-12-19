@@ -17,5 +17,5 @@ state = {
     "chunk_texts": [],
     "total_pages": 0,
     "page_texts": [],
+    "raw_page_texts": [],
 }
-

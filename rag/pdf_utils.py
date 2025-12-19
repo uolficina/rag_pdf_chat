@@ -4,31 +4,47 @@ import pytesseract
 import textwrap
 import re
 
+
 def normalize_pdf_text(text: str) -> str:
+    """
+    Limpa texto preservando quebras duplas de parágrafo.
+    - Remove hífen + quebra de linha no meio das palavras.
+    - Limpa espaços supérfluos, mas mantém separação de parágrafos.
+    """
     text = text.replace("\r", "\n")
-    text = re.sub(r"[ \t]+\n", "\n", text)          
-    text = re.sub(r"(?<=\w)-\n(?=\w)", "", text)    
-    text = re.sub(r"\n{3,}", "\n\n", text)          
-    text = re.sub(r"(?<!\n)\n(?!\n)", " ", text)    
-    text = re.sub(r"[ \t]{2,}", " ", text)          
-    return text.strip()
-    
+    text = re.sub(r"[ \t]+\n", "\n", text)
+    text = re.sub(r"(?<=\w)-\n(?=\w)", "", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+
+    paragraphs = re.split(r"\n\s*\n", text.strip())
+    cleaned = []
+    for para in paragraphs:
+        para = re.sub(r"[ \t]*\n[ \t]*", " ", para)
+        para = re.sub(r"[ \t]{2,}", " ", para)
+        para = para.strip()
+        if para:
+            cleaned.append(para)
+
+    return "\n\n".join(cleaned)
+
+
 def load_pdf(file_path: str):
-    reader =  PdfReader(file_path)
-    texts, offsets, cursor = [], [], 0
+    reader = PdfReader(file_path)
+    texts, raw_texts, offsets, cursor = [], [], [], 0
     for i, page in enumerate(reader.pages):
         page_text = page.extract_text() or ""
-        page_text = normalize_pdf_text(page_text)
         print("Found Text on file")
         if not page_text.strip():
             print("Text not found...converting...")
             image = convert_from_path(file_path, first_page=i+1, last_page=i+1)[0]
             page_text = pytesseract.image_to_string(image)
+        raw_texts.append(page_text)
+        page_text = normalize_pdf_text(page_text)
         offsets.append(cursor)
         texts.append(page_text) 
         cursor += len(page_text) + 1
     full_text = "\n".join(texts)
-    return full_text, offsets, texts
+    return full_text, offsets, texts, raw_texts
 
 def find_page(start_idx, page_offsets):
     page = 0

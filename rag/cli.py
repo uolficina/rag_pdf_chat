@@ -39,7 +39,7 @@ def chat_menu():
                 print("Load a PDF first")
                 continue
             while True:
-                question = input("Type your question or 'back':  ").strip().lower()
+                question = input("Type your question or 'back':  ").strip()
                 if question == "back":
                     break
                 results = search_rerank(question)
@@ -86,4 +86,3 @@ def chat_menu():
 
 if __name__ == "__main__":
     chat_menu()
-
