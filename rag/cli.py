@@ -16,8 +16,8 @@ def choose_language():
     print(f"\nIdioma atual da resposta: {current}")
     print("1) Português (PT-BR)")
     print("2) English")
-    print("3) Automático (seguir prompt/padrão)")
-    choice = input("Escolha uma opção: ").strip()
+    print("3) Auto")
+    choice = input("Choose Option: ").strip()
     if choice == "1":
         state["answer_lang"] = "pt"
         print("Idioma definido para português.")
