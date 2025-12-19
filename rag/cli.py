@@ -11,6 +11,26 @@ from rag.retrieval import (
 )
 
 
+def choose_language():
+    current = state.get("answer_lang") or "(automático)"
+    print(f"\nIdioma atual da resposta: {current}")
+    print("1) Português (PT-BR)")
+    print("2) English")
+    print("3) Automático (seguir prompt/padrão)")
+    choice = input("Escolha uma opção: ").strip()
+    if choice == "1":
+        state["answer_lang"] = "pt"
+        print("Idioma definido para português.")
+    elif choice == "2":
+        state["answer_lang"] = "en"
+        print("Idioma definido para inglês.")
+    elif choice == "3":
+        state["answer_lang"] = ""
+        print("Idioma resetado para automático.")
+    else:
+        print("Opção inválida; idioma não alterado.")
+
+
 def chat_menu():
     while True:
         print("\n=== Function Menu ===")
@@ -19,7 +39,8 @@ def chat_menu():
         print("3) Generate Semantic Index")
         print("4) Show specific page")
         print("5) Choose a loaded file from list")
-        print("6) Exit")
+        print("6) Choose answer language")
+        print("7) Exit")
 
         option = input("Choose a menu number: ").strip()
 
@@ -43,7 +64,7 @@ def chat_menu():
                 if question == "back":
                     break
                 results = search_rerank(question)
-                answer, usage = mistral_chat(question, results)
+                answer, usage = mistral_chat(question, results, preferred_lang=state.get("answer_lang"))
                 print("\nANSWER (Mistral):\n")
                 print(answer)
                 print(f"\nTokens - input: {usage.prompt_tokens}, output: {usage.completion_tokens}, total: {usage.total_tokens}")
@@ -81,6 +102,8 @@ def chat_menu():
             load_doc(selected["docid"])
             print(f"Loaded: {selected['name']}")
         elif option == "6":
+            choose_language()
+        elif option == "7":
             break
 
 

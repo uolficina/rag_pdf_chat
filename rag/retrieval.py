@@ -6,6 +6,7 @@ import numpy as np
 from mistralai import Mistral
 
 from rag.config import (
+    ANSWER_LANG,
     MISTRAL_API_KEY,
     MISTRAL_MODEL,
     state,
@@ -21,12 +22,29 @@ from rag.index_store import (
 from rag.pdf_utils import load_pdf, split_chunks
 
 
-def build_mistral_prompt(question, contexts):
+def _resolve_language(preferred_lang=None):
+    lang = (preferred_lang or state.get("answer_lang") or ANSWER_LANG or "").strip().lower()
+    if lang in ("pt", "pt-br", "portugues", "português"):
+        return "pt"
+    if lang in ("en", "en-us", "english"):
+        return "en"
+    return ""
+
+
+def build_mistral_prompt(question, contexts, preferred_lang=None):
+    lang = _resolve_language(preferred_lang)
+    lang_line = ""
+    if lang == "pt":
+        lang_line = "Responda em português do Brasil.\n"
+    elif lang == "en":
+        lang_line = "Answer in English.\n"
+
     blocks = []
     for ctx in contexts:
         blocks.append(f"[Page {ctx['page']}] {ctx['text']}")
     context_text = "\n\n".join(blocks)
     return (
+        f"{lang_line}"
         "Summarize or answer the question using only the provided context. "
         "If there is no answer, say you don't know.\n\n"
         f"Question: {question}\n\n"
@@ -34,11 +52,11 @@ def build_mistral_prompt(question, contexts):
     )
 
 
-def mistral_chat(question, contexts):
+def mistral_chat(question, contexts, preferred_lang=None):
     if not MISTRAL_API_KEY:
         raise RuntimeError("Set the MISTRAL_API_KEY environment variable")
     client = Mistral(api_key=MISTRAL_API_KEY)
-    prompt_text = build_mistral_prompt(question, contexts)
+    prompt_text = build_mistral_prompt(question, contexts, preferred_lang=preferred_lang)
     resp = client.chat.complete(
         model=MISTRAL_MODEL,
         messages=[{"role": "user", "content": prompt_text}],
