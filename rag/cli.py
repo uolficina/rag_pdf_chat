@@ -1,11 +1,12 @@
 import os
 
-from rag.config import state
+from rag.config import MISTRAL_API_KEY, state
 from rag.index_store import list_docs, load_doc
 from rag.pdf_utils import choose_page
 from rag.retrieval import (
     generate_index,
     mistral_chat,
+    offline_chat,
     prepare_document,
     search_rerank,
 )
@@ -40,7 +41,8 @@ def chat_menu():
         print("4) Show specific page")
         print("5) Choose a loaded file from list")
         print("6) Choose answer language")
-        print("7) Exit")
+        print("7) Toggle offline mode (current: {})".format("ON" if state.get("offline") else "OFF"))
+        print("8) Exit")
 
         option = input("Choose a menu number: ").strip()
 
@@ -64,10 +66,21 @@ def chat_menu():
                 if question == "back":
                     break
                 results = search_rerank(question)
-                answer, usage = mistral_chat(question, results, preferred_lang=state.get("answer_lang"))
+                llm_allowed = not state.get("offline") and bool(MISTRAL_API_KEY)
+                if llm_allowed:
+                    try:
+                        answer, usage = mistral_chat(question, results, preferred_lang=state.get("answer_lang"))
+                    except Exception as exc:
+                        print(f"LLM call failed ({exc}); falling back to offline context.")
+                        answer, usage = offline_chat(results)
+                else:
+                    answer, usage = offline_chat(results)
                 print("\nANSWER (Mistral):\n")
                 print(answer)
-                print(f"\nTokens - input: {usage.prompt_tokens}, output: {usage.completion_tokens}, total: {usage.total_tokens}")
+                if usage:
+                    print(f"\nTokens - input: {usage.prompt_tokens}, output: {usage.completion_tokens}, total: {usage.total_tokens}")
+                elif not llm_allowed:
+                    print("\n[Offline] Resposta gerada sem LLM.")
         elif option == "3":
             if not state["chunks"]:
                 print("Load a PDF first")
@@ -104,6 +117,9 @@ def chat_menu():
         elif option == "6":
             choose_language()
         elif option == "7":
+            state["offline"] = not state.get("offline")
+            print(f"Offline mode is now {'ON' if state['offline'] else 'OFF'}.")
+        elif option == "8":
             break
 
 

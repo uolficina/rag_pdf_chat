@@ -53,6 +53,8 @@ def build_mistral_prompt(question, contexts, preferred_lang=None):
 
 
 def mistral_chat(question, contexts, preferred_lang=None):
+    if state.get("offline"):
+        raise RuntimeError("Offline mode enabled; LLM call skipped")
     if not MISTRAL_API_KEY:
         raise RuntimeError("Set the MISTRAL_API_KEY environment variable")
     client = Mistral(api_key=MISTRAL_API_KEY)
@@ -64,6 +66,21 @@ def mistral_chat(question, contexts, preferred_lang=None):
     )
     usage = resp.usage
     return resp.choices[0].message.content, usage
+
+
+def offline_chat(contexts, snippet=400):
+    if not contexts:
+        return "[Offline] No context found.", None
+    lines = ["[Offline] No call to LLM. Relevant Chunks:"]
+    for i, ctx in enumerate(contexts, start=1):
+        text = (ctx.get("text") or "").strip()
+        if len(text) > snippet:
+            text = text[:snippet].rstrip() + "..."
+        page = ctx.get("page", "?")
+        score = ctx.get("score")
+        score_txt = f" (score {score:.3f})" if score is not None else ""
+        lines.append(f"{i}) Página {page}{score_txt}: {text}")
+    return "\n".join(lines), None
 
 
 def search_rerank(question, k_base=30, k_final=3):
